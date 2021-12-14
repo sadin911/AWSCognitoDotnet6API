@@ -5,6 +5,9 @@ using Amazon.CognitoIdentityProvider;
 using Amazon.Extensions.CognitoAuthentication;
 using Amazon.Runtime;
 using Amazon.CognitoIdentityProvider.Model;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+
 namespace simpleCognitoAPI.Controllers
 {
     [ApiController]
@@ -46,6 +49,11 @@ namespace simpleCognitoAPI.Controllers
                 Name = "name",
                 Value = username
             });
+            attributeType.Add(new AttributeType()
+            {
+                Name = "custom:userid",
+                Value = "999"
+            });
 
             SignUpRequest signupReq = new SignUpRequest()
             {
@@ -68,6 +76,37 @@ namespace simpleCognitoAPI.Controllers
                 return null;
             }
         }
+
+        public static async Task<Token> RenewTokenAync(string refreshToken, IConfiguration config)
+        {
+            var UserPoolClientId = config["AWS:UserPoolClientId"];
+            var UserPoolId = config["AWS:UserPoolId"];
+            var AccessId = config["AWS:AccessId"];
+            var AccessSecret = config["AWS:AccessSecret"];
+            var credentials = new BasicAWSCredentials(AccessId, AccessSecret);
+            var provider = new AmazonCognitoIdentityProviderClient(credentials, RegionEndpoint.APSoutheast1);
+            Dictionary<string, string> authParam = new Dictionary<string, string>()
+            {
+                { "REFRESH_TOKEN",refreshToken }
+            };
+            AdminInitiateAuthRequest adminReq = new AdminInitiateAuthRequest()
+            {
+                AuthFlow = AuthFlowType.REFRESH_TOKEN_AUTH,
+                AuthParameters = authParam,
+                ClientId = UserPoolClientId,
+                UserPoolId = UserPoolId,
+            };
+            //adminReq.AuthParameters.Add("REFRESH_TOKEN", refreshToken);
+            AdminInitiateAuthResponse adminInitiateAuthResponse = await provider.AdminInitiateAuthAsync(adminReq).ConfigureAwait(false);
+
+            Token token = new Token
+            {
+                AccessToken = adminInitiateAuthResponse.AuthenticationResult.AccessToken,
+                IdToken = adminInitiateAuthResponse.AuthenticationResult.IdToken,
+                RefreshToken = adminInitiateAuthResponse.AuthenticationResult.RefreshToken,
+            };
+            return token;
+        }
         public static async Task<Token> GetCredsAsync(string username, string password,IConfiguration config)
         {
             var UserPoolClientId = config["AWS:UserPoolClientId"];
@@ -87,12 +126,15 @@ namespace simpleCognitoAPI.Controllers
             AuthFlowResponse authResponse = await user.StartWithSrpAuthAsync(authRequest).ConfigureAwait(false);
             var accessToken = authResponse.AuthenticationResult.AccessToken;
             var refreshToken = authResponse.AuthenticationResult.RefreshToken;
+            var idToken = authResponse.AuthenticationResult.IdToken;
             Token token = new Token
             {
                 AccessToken = accessToken,
+                IdToken = idToken,
                 RefreshToken = refreshToken,
             };
             Console.WriteLine(accessToken);
+            Console.WriteLine(refreshToken);
             return token;
         }
 
@@ -148,12 +190,26 @@ namespace simpleCognitoAPI.Controllers
             return token;
         }
 
+        [HttpPost("renew")]
+        public async Task<Token> Renew([FromBody] RenewTokenData refreshToken)
+        {
+            var token = await RenewTokenAync(refreshToken.RefreshToken, _config);
+            return token;
+        }
+
         [HttpPost("setPassword")]
         public async void SetPassword([FromBody] Userdata userdata)
         {
             SetPasswordAsync(userdata.Username, userdata.Password,_config);
         }
 
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+        [HttpPost("verify")]
+        
+        public string verify()
+        {
+            return "test";
+        }
 
     }
 }

@@ -3,9 +3,14 @@ namespace simpleCognitoAPI
     public class Token
     {
         public string? AccessToken { get; set; }
+        public string? IdToken { get; set; }
         public string? RefreshToken { get; set; }
     }
 
+    public class RenewTokenData
+    {
+        public string? RefreshToken { get; set; }
+    }
     public class Userdata
     {
         public string? Username { get; set; }
